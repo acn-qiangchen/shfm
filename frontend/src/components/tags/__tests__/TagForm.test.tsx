@@ -1,6 +1,8 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { vi } from 'vitest';
+import '@testing-library/jest-dom';
 import { TagForm } from '../TagForm';
 import { Tag } from '../../../types';
 
