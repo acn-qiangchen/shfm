@@ -1,99 +1,132 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { dynamodb, TABLES } from '../../lib/db';
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { UpdateTransactionSchema } from '../../types/transaction';
+import * as dynamodb from '../../lib/dynamodb';
+import { ZodError } from 'zod';
+import { getUserId } from '../../lib/auth';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler: APIGatewayProxyHandler = async (event) => {
+  // CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Credentials': true,
+  };
+
   try {
-    const userId = event.requestContext.authorizer?.claims.sub;
+    // Check authentication
+    const userId = getUserId(event);
     if (!userId) {
       return {
         statusCode: 401,
-        body: JSON.stringify({ message: 'Unauthorized' })
+        headers,
+        body: JSON.stringify({ message: 'Unauthorized' }),
       };
     }
 
+    // Get transaction ID from path parameters
     const transactionId = event.pathParameters?.id;
     if (!transactionId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ message: 'Transaction ID is required' })
+        headers,
+        body: JSON.stringify({ message: 'Missing transaction ID' }),
       };
     }
 
-    // 既存のトランザクションを取得
-    const getResult = await dynamodb.send(new GetCommand({
-      TableName: TABLES.TRANSACTIONS,
-      Key: { id: transactionId }
-    }));
+    // Get existing transaction
+    const existingTransaction = await dynamodb.get({
+      TableName: dynamodb.TABLES.TRANSACTIONS,
+      Key: { id: transactionId },
+    });
 
-    if (!getResult.Item) {
+    if (!existingTransaction.Item) {
       return {
         statusCode: 404,
-        body: JSON.stringify({ message: 'Transaction not found' })
+        headers,
+        body: JSON.stringify({ message: 'Transaction not found' }),
       };
     }
 
-    // 所有者チェック
-    if (getResult.Item.userId !== userId) {
+    // Check ownership
+    if (existingTransaction.Item.userId !== userId) {
       return {
         statusCode: 403,
-        body: JSON.stringify({ message: 'Forbidden' })
+        headers,
+        body: JSON.stringify({ message: 'Forbidden' }),
       };
     }
 
-    const body = JSON.parse(event.body || '{}');
-    const validatedData = UpdateTransactionSchema.parse(body);
-
-    // 更新式を構築
-    const updateExpressions: string[] = [];
-    const expressionAttributeNames: Record<string, string> = {};
-    const expressionAttributeValues: Record<string, any> = {};
-
-    Object.entries(validatedData).forEach(([key, value]) => {
-      if (value !== undefined) {
-        updateExpressions.push(`#${key} = :${key}`);
-        expressionAttributeNames[`#${key}`] = key;
-        expressionAttributeValues[`:${key}`] = value;
-      }
-    });
-
-    if (updateExpressions.length === 0) {
+    // Parse and validate request body
+    if (!event.body) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ message: 'No fields to update' })
+        headers,
+        body: JSON.stringify({ message: 'Invalid request body' }),
       };
     }
 
-    // 更新日時を追加
-    updateExpressions.push('#updatedAt = :updatedAt');
-    expressionAttributeNames['#updatedAt'] = 'updatedAt';
-    expressionAttributeValues[':updatedAt'] = new Date().toISOString();
-
-    const updateCommand = new UpdateCommand({
-      TableName: TABLES.TRANSACTIONS,
-      Key: { id: transactionId },
-      UpdateExpression: `SET ${updateExpressions.join(', ')}`,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues,
-      ReturnValues: 'ALL_NEW'
+    const data = JSON.parse(event.body);
+    const validatedData = UpdateTransactionSchema.parse({
+      ...data,
+      id: transactionId,
     });
 
-    const result = await dynamodb.send(updateCommand);
+    // Validate that all tag IDs exist
+    if (validatedData.tagIds && validatedData.tagIds.length > 0) {
+      const tagPromises = validatedData.tagIds.map(tagId =>
+        dynamodb.get({
+          TableName: dynamodb.TABLES.TAGS,
+          Key: { id: tagId },
+        })
+      );
+      const tagResults = await Promise.all(tagPromises);
+      const nonExistentTags = validatedData.tagIds.filter((_, index) => !tagResults[index].Item);
+      
+      if (nonExistentTags.length > 0) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            message: 'One or more tags do not exist',
+            nonExistentTags,
+          }),
+        };
+      }
+    }
+
+    const updatedTransaction = {
+      ...existingTransaction.Item,
+      ...validatedData,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await dynamodb.put({
+      TableName: dynamodb.TABLES.TRANSACTIONS,
+      Item: updatedTransaction,
+    });
 
     return {
       statusCode: 200,
-      body: JSON.stringify(result.Attributes)
+      headers,
+      body: JSON.stringify(updatedTransaction),
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error updating transaction:', error);
-    
+
+    if (error instanceof ZodError) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          message: 'Validation error',
+          errors: error.errors,
+        }),
+      };
+    }
+
     return {
-      statusCode: error.name === 'ZodError' ? 400 : 500,
-      body: JSON.stringify({
-        message: error.name === 'ZodError' ? 'Invalid input' : 'Internal server error',
-        errors: error.name === 'ZodError' ? error.errors : undefined
-      })
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ message: 'Internal server error' }),
     };
   }
 }; 

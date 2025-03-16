@@ -1,0 +1,13 @@
+{
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "test-user-id"
+      }
+    }
+  },
+  "pathParameters": {
+    "id": "831bffcd-a732-4d85-b6ca-12f129dcfa18"
+  },
+  "body": "{\"id\":\"831bffcd-a732-4d85-b6ca-12f129dcfa18\",\"amount\":1200,\"description\":\"スーパーでの買い物（更新）\",\"date\":\"2024-03-16\",\"type\":\"EXPENSE\",\"tagIds\":[\"a041c75f-25d1-422c-affb-106ab357ca4f\"]}"
+} 

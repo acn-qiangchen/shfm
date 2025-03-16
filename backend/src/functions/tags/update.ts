@@ -1,6 +1,5 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { v4 as uuidv4 } from 'uuid';
-import { CreateTransactionSchema, Transaction } from '../../types/transaction';
+import { UpdateTagSchema } from '../../types/tag';
 import * as dynamodb from '../../lib/dynamodb';
 import { ZodError } from 'zod';
 import { getUserId } from '../../lib/auth';
@@ -23,6 +22,39 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
+    // Get tag ID from path parameters
+    const tagId = event.pathParameters?.id;
+    if (!tagId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ message: 'Missing tag ID' }),
+      };
+    }
+
+    // Get existing tag
+    const existingTag = await dynamodb.get({
+      TableName: dynamodb.TABLES.TAGS,
+      Key: { id: tagId },
+    });
+
+    if (!existingTag.Item) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ message: 'Tag not found' }),
+      };
+    }
+
+    // Check ownership
+    if (existingTag.Item.userId !== userId) {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ message: 'Forbidden' }),
+      };
+    }
+
     // Parse and validate request body
     if (!event.body) {
       return {
@@ -33,52 +65,34 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     const data = JSON.parse(event.body);
-    const validatedData = CreateTransactionSchema.parse(data);
+    const validatedData = UpdateTagSchema.parse({
+      ...data,
+      id: tagId,
+    });
 
-    // Validate that all tag IDs exist
-    if (validatedData.tagIds && validatedData.tagIds.length > 0) {
-      const tagPromises = validatedData.tagIds.map(tagId =>
-        dynamodb.get({
-          TableName: dynamodb.TABLES.TAGS,
-          Key: { id: tagId },
-        })
-      );
-      const tagResults = await Promise.all(tagPromises);
-      const nonExistentTags = validatedData.tagIds.filter((_, index) => !tagResults[index].Item);
-      
-      if (nonExistentTags.length > 0) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({
-            message: 'One or more tags do not exist',
-            nonExistentTags,
-          }),
-        };
-      }
-    }
-
-    const now = new Date().toISOString();
-    const transaction: Transaction = {
-      id: uuidv4(),
-      userId,
+    const updatedTag = {
+      ...existingTag.Item,
       ...validatedData,
-      createdAt: now,
-      updatedAt: now,
+      updatedAt: new Date().toISOString(),
     };
 
     await dynamodb.put({
-      TableName: dynamodb.TABLES.TRANSACTIONS,
-      Item: transaction,
+      TableName: dynamodb.TABLES.TAGS,
+      Item: updatedTag,
+      ConditionExpression: 'id = :id AND userId = :userId',
+      ExpressionAttributeValues: {
+        ':id': tagId,
+        ':userId': userId,
+      },
     });
 
     return {
-      statusCode: 201,
+      statusCode: 200,
       headers,
-      body: JSON.stringify(transaction),
+      body: JSON.stringify(updatedTag),
     };
   } catch (error: unknown) {
-    console.error('Error creating transaction:', error);
+    console.error('Error updating tag:', error);
 
     if (error instanceof ZodError) {
       return {

@@ -4,8 +4,6 @@ import { z } from 'zod';
 import { getUserId } from '../../lib/auth';
 
 const QueryParamsSchema = z.object({
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
   limit: z.string().transform(Number).optional(),
   nextToken: z.string().optional(),
 });
@@ -30,26 +28,18 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     // Parse and validate query parameters
     const params = QueryParamsSchema.parse(event.queryStringParameters || {});
-    const { startDate, endDate, limit = 20, nextToken } = params;
+    const { limit = 20, nextToken } = params;
 
     // Build query parameters
     const queryParams: AWS.DynamoDB.DocumentClient.QueryInput = {
-      TableName: dynamodb.TABLES.TRANSACTIONS,
-      IndexName: 'byUserAndDate',
-      KeyConditionExpression: startDate && endDate
-        ? 'userId = :userId AND #date BETWEEN :startDate AND :endDate'
-        : 'userId = :userId',
-      ExpressionAttributeNames: {
-        '#date': 'date',
-      },
+      TableName: dynamodb.TABLES.TAGS,
+      IndexName: 'byUser',
+      KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: {
         ':userId': userId,
-        ...(startDate && { ':startDate': startDate }),
-        ...(endDate && { ':endDate': endDate }),
       },
       Limit: limit,
       ExclusiveStartKey: nextToken ? JSON.parse(Buffer.from(nextToken, 'base64').toString()) : undefined,
-      ScanIndexForward: false, // Sort in descending order (newest first)
     };
 
     const result = await dynamodb.query(queryParams);
@@ -65,7 +55,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }),
     };
   } catch (error: unknown) {
-    console.error('Error listing transactions:', error);
+    console.error('Error listing tags:', error);
 
     if (error instanceof z.ZodError) {
       return {

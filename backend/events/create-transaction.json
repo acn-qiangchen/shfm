@@ -1,0 +1,10 @@
+{
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "test-user-id"
+      }
+    }
+  },
+  "body": "{\"amount\":1000,\"description\":\"スーパーでの買い物\",\"date\":\"2024-03-16\",\"type\":\"EXPENSE\",\"tagIds\":[\"a041c75f-25d1-422c-affb-106ab357ca4f\"]}"
+} 

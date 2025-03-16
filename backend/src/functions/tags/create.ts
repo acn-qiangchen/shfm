@@ -1,9 +1,9 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
-import { CreateTransactionSchema, Transaction } from '../../types/transaction';
+import { CreateTagSchema, Tag } from '../../types/tag';
 import * as dynamodb from '../../lib/dynamodb';
-import { ZodError } from 'zod';
 import { getUserId } from '../../lib/auth';
+import { ZodError } from 'zod';
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   // CORS headers
@@ -11,6 +11,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Credentials': true,
   };
+
+  // Debug logs for environment variables
+  console.log('Environment variables:', {
+    TAGS_TABLE: process.env.TAGS_TABLE,
+    IS_OFFLINE: process.env.IS_OFFLINE,
+    AWS_REGION: process.env.AWS_REGION,
+    DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT,
+  });
 
   try {
     // Check authentication
@@ -33,33 +41,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     const data = JSON.parse(event.body);
-    const validatedData = CreateTransactionSchema.parse(data);
-
-    // Validate that all tag IDs exist
-    if (validatedData.tagIds && validatedData.tagIds.length > 0) {
-      const tagPromises = validatedData.tagIds.map(tagId =>
-        dynamodb.get({
-          TableName: dynamodb.TABLES.TAGS,
-          Key: { id: tagId },
-        })
-      );
-      const tagResults = await Promise.all(tagPromises);
-      const nonExistentTags = validatedData.tagIds.filter((_, index) => !tagResults[index].Item);
-      
-      if (nonExistentTags.length > 0) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({
-            message: 'One or more tags do not exist',
-            nonExistentTags,
-          }),
-        };
-      }
-    }
+    const validatedData = CreateTagSchema.parse(data);
 
     const now = new Date().toISOString();
-    const transaction: Transaction = {
+    const tag: Tag = {
       id: uuidv4(),
       userId,
       ...validatedData,
@@ -68,17 +53,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     };
 
     await dynamodb.put({
-      TableName: dynamodb.TABLES.TRANSACTIONS,
-      Item: transaction,
+      TableName: dynamodb.TABLES.TAGS,
+      Item: tag,
     });
 
     return {
       statusCode: 201,
       headers,
-      body: JSON.stringify(transaction),
+      body: JSON.stringify(tag),
     };
   } catch (error: unknown) {
-    console.error('Error creating transaction:', error);
+    console.error('Error creating tag:', error);
 
     if (error instanceof ZodError) {
       return {

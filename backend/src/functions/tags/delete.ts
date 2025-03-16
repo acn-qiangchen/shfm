@@ -20,32 +20,32 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // Get transaction ID from path parameters
-    const transactionId = event.pathParameters?.id;
-    if (!transactionId) {
+    // Get tag ID from path parameters
+    const tagId = event.pathParameters?.id;
+    if (!tagId) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ message: 'Missing transaction ID' }),
+        body: JSON.stringify({ message: 'Missing tag ID' }),
       };
     }
 
-    // Get existing transaction
-    const existingTransaction = await dynamodb.get({
-      TableName: dynamodb.TABLES.TRANSACTIONS,
-      Key: { id: transactionId },
+    // Get existing tag
+    const existingTag = await dynamodb.get({
+      TableName: dynamodb.TABLES.TAGS,
+      Key: { id: tagId },
     });
 
-    if (!existingTransaction.Item) {
+    if (!existingTag.Item) {
       return {
         statusCode: 404,
         headers,
-        body: JSON.stringify({ message: 'Transaction not found' }),
+        body: JSON.stringify({ message: 'Tag not found' }),
       };
     }
 
     // Check ownership
-    if (existingTransaction.Item.userId !== userId) {
+    if (existingTag.Item.userId !== userId) {
       return {
         statusCode: 403,
         headers,
@@ -53,10 +53,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // Delete the transaction
+    // Delete the tag
     await dynamodb.del({
-      TableName: dynamodb.TABLES.TRANSACTIONS,
-      Key: { id: transactionId },
+      TableName: dynamodb.TABLES.TAGS,
+      Key: { id: tagId },
+      ConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: {
+        ':userId': userId,
+      },
     });
 
     return {
@@ -65,7 +69,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       body: '',
     };
   } catch (error: unknown) {
-    console.error('Error deleting transaction:', error);
+    console.error('Error deleting tag:', error);
     return {
       statusCode: 500,
       headers,

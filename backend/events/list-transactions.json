@@ -1,0 +1,13 @@
+{
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "test-user-id"
+      }
+    }
+  },
+  "queryStringParameters": {
+    "startDate": "2024-03-01",
+    "endDate": "2024-03-31"
+  }
+} 

@@ -1,0 +1,13 @@
+{
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "test-user-id"
+      }
+    }
+  },
+  "pathParameters": {
+    "id": "42c4974f-f6e6-4d41-86ca-a3204e13d7fe"
+  },
+  "body": "{\"id\":\"42c4974f-f6e6-4d41-86ca-a3204e13d7fe\",\"name\":\"食費（更新）\",\"color\":\"#00FF00\"}"
+} 
