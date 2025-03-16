@@ -1,0 +1,194 @@
+service: shfm-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-northeast-1
+  environment:
+    TAGS_TABLE: ${self:service}-tags-${sls:stage}
+    TRANSACTIONS_TABLE: ${self:service}-transactions-${sls:stage}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - !GetAtt TagsTable.Arn
+            - !GetAtt TransactionsTable.Arn
+
+functions:
+  # Tags
+  createTag:
+    handler: src/functions/tags/create.handler
+    events:
+      - http:
+          path: /tags
+          method: post
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+  listTags:
+    handler: src/functions/tags/list.handler
+    events:
+      - http:
+          path: /tags
+          method: get
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+  updateTag:
+    handler: src/functions/tags/update.handler
+    events:
+      - http:
+          path: /tags/{id}
+          method: put
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+  deleteTag:
+    handler: src/functions/tags/delete.handler
+    events:
+      - http:
+          path: /tags/{id}
+          method: delete
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+  # Transactions
+  createTransaction:
+    handler: src/functions/transactions/create.handler
+    events:
+      - http:
+          path: /transactions
+          method: post
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+  listTransactions:
+    handler: src/functions/transactions/list.handler
+    events:
+      - http:
+          path: /transactions
+          method: get
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+  updateTransaction:
+    handler: src/functions/transactions/update.handler
+    events:
+      - http:
+          path: /transactions/{id}
+          method: put
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+  deleteTransaction:
+    handler: src/functions/transactions/delete.handler
+    events:
+      - http:
+          path: /transactions/{id}
+          method: delete
+          cors: true
+          authorizer:
+            type: jwt
+            identitySource: $request.header.Authorization
+            issuerUrl: ${env:AUTH0_DOMAIN}
+            audience: ${env:AUTH0_AUDIENCE}
+
+resources:
+  Resources:
+    TagsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TAGS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: byUserId
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    TransactionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TRANSACTIONS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: date
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: byUserAndDate
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: date
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-offline 

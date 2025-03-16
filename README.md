@@ -256,3 +256,100 @@ npm run test:integration  # 統合テストの実行
 ## ライセンス
 
 MIT 
+
+## トラブルシューティング
+
+### ポートの使用に関する問題
+
+1. "Port 3001 is already in use" エラーが発生した場合:
+```bash
+# macOS/Linux
+# 使用中のポートを確認
+lsof -i :3001
+
+# プロセスを強制終了
+lsof -i :3001 | grep LISTEN | awk '{print $2}' | xargs kill -9
+
+# または
+pkill -f 'vite'
+```
+
+2. 別のポートを使用する場合:
+```bash
+# package.jsonのdev scriptを編集
+"dev": "vite --port 3002"
+
+# または環境変数で指定
+PORT=3002 npm run dev
+```
+
+### 型定義エラー
+
+1. Viteの環境変数の型エラー:
+- `src/vite-env.d.ts` が存在することを確認
+- `tsconfig.json` に `"types": ["vite/client"]` が含まれていることを確認
+
+2. テストの型エラー:
+```bash
+npm install --save-dev @types/jest @testing-library/jest-dom
+```
+
+### 開発サーバーの問題
+
+1. 変更が反映されない場合:
+```bash
+# キャッシュをクリアして再起動
+npm run dev -- --force
+```
+
+2. 環境変数が読み込まれない場合:
+- `.env.local` ファイルが存在することを確認
+- 全ての必要な環境変数が設定されていることを確認
+- 環境変数が `VITE_` プレフィックスで始まっていることを確認 
+
+### Cognitoユーザーの作成
+
+1. テストユーザーの作成
+```bash
+# ユーザーの作成（一時パスワード設定）
+aws cognito-idp admin-create-user \
+  --user-pool-id <your-user-pool-id> \
+  --username test@example.com \
+  --temporary-password Test@123 \
+  --user-attributes Name=email,Value=test@example.com \
+  --profile shfm
+
+# パスワードを恒久的に設定
+aws cognito-idp admin-set-user-password \
+  --user-pool-id <your-user-pool-id> \
+  --username test@example.com \
+  --password Test@123456 \
+  --permanent \
+  --profile shfm
+```
+
+デフォルトの認証情報:
+- メールアドレス: test@example.com
+- パスワード: Test@123456
+
+2. ユーザーの確認
+```bash
+# ユーザー一覧の取得
+aws cognito-idp list-users \
+  --user-pool-id <your-user-pool-id> \
+  --profile shfm
+
+# 特定のユーザーの詳細確認
+aws cognito-idp admin-get-user \
+  --user-pool-id <your-user-pool-id> \
+  --username test@example.com \
+  --profile shfm
+```
+
+3. ユーザーの削除（必要な場合）
+```bash
+aws cognito-idp admin-delete-user \
+  --user-pool-id <your-user-pool-id> \
+  --username test@example.com \
+  --profile shfm
+``` 

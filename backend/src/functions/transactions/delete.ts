@@ -1,64 +1,75 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { dynamodb, TABLES } from '../../lib/db';
+import { APIGatewayProxyHandler } from 'aws-lambda';
+import * as dynamodb from '../../lib/dynamodb';
+import { getUserId } from '../../lib/auth';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler: APIGatewayProxyHandler = async (event) => {
+  // CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Credentials': true,
+  };
+
   try {
-    const userId = event.requestContext.authorizer?.claims.sub;
+    // Check authentication
+    const userId = getUserId(event);
     if (!userId) {
       return {
         statusCode: 401,
-        body: JSON.stringify({ message: 'Unauthorized' })
+        headers,
+        body: JSON.stringify({ message: 'Unauthorized' }),
       };
     }
 
+    // Get transaction ID from path parameters
     const transactionId = event.pathParameters?.id;
     if (!transactionId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ message: 'Transaction ID is required' })
+        headers,
+        body: JSON.stringify({ message: 'Missing transaction ID' }),
       };
     }
 
-    // 既存のトランザクションを取得
-    const getResult = await dynamodb.send(new GetCommand({
-      TableName: TABLES.TRANSACTIONS,
-      Key: { id: transactionId }
-    }));
+    // Get existing transaction
+    const existingTransaction = await dynamodb.get({
+      TableName: dynamodb.TABLES.TRANSACTIONS,
+      Key: { id: transactionId },
+    });
 
-    if (!getResult.Item) {
+    if (!existingTransaction.Item) {
       return {
         statusCode: 404,
-        body: JSON.stringify({ message: 'Transaction not found' })
+        headers,
+        body: JSON.stringify({ message: 'Transaction not found' }),
       };
     }
 
-    // 所有者チェック
-    if (getResult.Item.userId !== userId) {
+    // Check ownership
+    if (existingTransaction.Item.userId !== userId) {
       return {
         statusCode: 403,
-        body: JSON.stringify({ message: 'Forbidden' })
+        headers,
+        body: JSON.stringify({ message: 'Forbidden' }),
       };
     }
 
-    // トランザクションを削除
-    await dynamodb.send(new DeleteCommand({
-      TableName: TABLES.TRANSACTIONS,
-      Key: { id: transactionId }
-    }));
+    // Delete the transaction
+    await dynamodb.del({
+      TableName: dynamodb.TABLES.TRANSACTIONS,
+      Key: { id: transactionId },
+    });
 
     return {
       statusCode: 204,
-      body: ''
+      headers,
+      body: '',
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error deleting transaction:', error);
-    
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        message: 'Internal server error'
-      })
+      headers,
+      body: JSON.stringify({ message: 'Internal server error' }),
     };
   }
 }; 

@@ -1,29 +1,24 @@
 import React from 'react';
 import { Tag } from '../../types';
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface TagListProps {
   tags: Tag[];
-  onEdit: (tag: Tag) => void;
-  onDelete: (id: string) => void;
   isLoading: boolean;
+  onEdit: (tag: Tag) => void;
+  onDelete: (tagId: string) => void;
 }
 
 export const TagList: React.FC<TagListProps> = ({
   tags,
+  isLoading,
   onEdit,
   onDelete,
-  isLoading,
 }) => {
-  const handleDelete = (tag: Tag) => {
-    if (window.confirm('このタグを削除してもよろしいですか？')) {
-      onDelete(tag.id);
-    }
-  };
-
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-32" data-testid="loading-spinner">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      <div className="flex justify-center items-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
       </div>
     );
   }
@@ -31,38 +26,40 @@ export const TagList: React.FC<TagListProps> = ({
   if (tags.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        タグがありません
+        タグが登録されていません
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {tags.map((tag) => (
         <div
           key={tag.id}
-          className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow"
+          className="relative flex items-center justify-between p-4 bg-white rounded-lg shadow"
         >
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center space-x-3">
             <div
-              className="w-6 h-6 rounded-full border border-gray-300"
+              className="w-6 h-6 rounded"
               style={{ backgroundColor: tag.color }}
-              data-testid={`color-preview-${tag.id}`}
+              data-testid="tag-color"
             />
-            <h3 className="font-medium">{tag.name}</h3>
+            <span className="text-gray-900 font-medium">{tag.name}</span>
           </div>
-          <div className="flex justify-end space-x-2">
+          <div className="flex space-x-2">
             <button
               onClick={() => onEdit(tag)}
-              className="text-sm px-3 py-1 text-blue-600 hover:bg-blue-50 rounded"
+              className="p-1 text-gray-400 hover:text-gray-500"
+              aria-label="タグを編集"
             >
-              編集
+              <PencilIcon className="h-5 w-5" />
             </button>
             <button
-              onClick={() => handleDelete(tag)}
-              className="text-sm px-3 py-1 text-red-600 hover:bg-red-50 rounded"
+              onClick={() => onDelete(tag.id)}
+              className="p-1 text-gray-400 hover:text-red-500"
+              aria-label="タグを削除"
             >
-              削除
+              <TrashIcon className="h-5 w-5" />
             </button>
           </div>
         </div>

@@ -7,72 +7,82 @@ import { TagForm } from '../TagForm';
 import { Tag } from '../../../types';
 
 describe('TagForm', () => {
-  const mockOnSubmit = vi.fn();
-  const defaultProps = {
-    onSubmit: mockOnSubmit,
-    isSubmitting: false,
-  };
-
   const mockTag: Tag = {
     id: '1',
     userId: 'user1',
     name: 'テストタグ',
     color: '#FF0000',
-    createdAt: '2024-03-20T10:00:00Z',
-    updatedAt: '2024-03-20T10:00:00Z',
+    createdAt: '2024-03-15T00:00:00Z',
+    updatedAt: '2024-03-15T00:00:00Z',
   };
 
+  const mockOnSubmit = vi.fn();
+
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockOnSubmit.mockClear();
   });
 
-  it('renders form fields correctly', () => {
-    render(<TagForm {...defaultProps} />);
+  it('新規作成モードで正しくレンダリングされること', () => {
+    render(<TagForm onSubmit={mockOnSubmit} />);
 
-    expect(screen.getByLabelText(/タグ名/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/色/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('タグ名')).toBeInTheDocument();
+    expect(screen.getByLabelText('色')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '作成' })).toBeInTheDocument();
   });
 
-  it('submits form with valid data', () => {
-    render(<TagForm {...defaultProps} />);
+  it('編集モードで正しくレンダリングされること', () => {
+    render(<TagForm tag={mockTag} onSubmit={mockOnSubmit} />);
 
-    fireEvent.change(screen.getByLabelText(/タグ名/i), {
-      target: { value: 'テストタグ' },
-    });
-    fireEvent.change(screen.getByLabelText(/色/i), {
-      target: { value: '#FF0000' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /登録/i }));
+    const nameInput = screen.getByLabelText('タグ名') as HTMLInputElement;
+    const colorInput = screen.getByLabelText('色') as HTMLInputElement;
+    const submitButton = screen.getByRole('button', { name: '更新' });
+
+    expect(nameInput.value).toBe(mockTag.name);
+    expect(colorInput.value).toBe(mockTag.color);
+    expect(submitButton).toBeInTheDocument();
+  });
+
+  it('タグ名が空の場合にエラーメッセージを表示すること', async () => {
+    render(<TagForm onSubmit={mockOnSubmit} />);
+
+    const submitButton = screen.getByRole('button', { name: '作成' });
+    fireEvent.click(submitButton);
+
+    expect(await screen.findByText('タグ名を入力してください')).toBeInTheDocument();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it('フォームが正しく送信されること', () => {
+    render(<TagForm onSubmit={mockOnSubmit} />);
+
+    const nameInput = screen.getByLabelText('タグ名');
+    const colorInput = screen.getByLabelText('色');
+    const submitButton = screen.getByRole('button', { name: '作成' });
+
+    fireEvent.change(nameInput, { target: { value: 'テストタグ' } });
+    fireEvent.change(colorInput, { target: { value: '#00FF00' } });
+    fireEvent.click(submitButton);
 
     expect(mockOnSubmit).toHaveBeenCalledWith({
       name: 'テストタグ',
-      color: '#FF0000',
+      color: '#00FF00',
     });
   });
 
-  it('shows validation error for empty name', () => {
-    render(<TagForm {...defaultProps} />);
+  it('ローディング中は入力とボタンが無効化されること', () => {
+    render(<TagForm onSubmit={mockOnSubmit} isLoading={true} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /登録/i }));
+    const nameInput = screen.getByLabelText('タグ名');
+    const colorInput = screen.getByLabelText('色');
+    const submitButton = screen.getByRole('button', { name: '保存中...' });
 
-    expect(screen.getByText(/タグ名を入力してください/i)).toBeInTheDocument();
-  });
-
-  it('disables submit button while submitting', () => {
-    render(<TagForm {...defaultProps} isSubmitting={true} />);
-
-    expect(screen.getByRole('button', { name: /登録中/i })).toBeDisabled();
-  });
-
-  it('pre-fills form when editing existing tag', () => {
-    render(<TagForm {...defaultProps} tag={mockTag} />);
-
-    expect(screen.getByLabelText(/タグ名/i)).toHaveValue(mockTag.name);
-    expect(screen.getByLabelText(/色/i)).toHaveValue(mockTag.color);
+    expect(nameInput).toBeDisabled();
+    expect(colorInput).toBeDisabled();
+    expect(submitButton).toBeDisabled();
   });
 
   it('shows color preview', () => {
-    render(<TagForm {...defaultProps} />);
+    render(<TagForm onSubmit={mockOnSubmit} />);
 
     const colorInput = screen.getByLabelText(/色/i);
     fireEvent.change(colorInput, { target: { value: '#FF0000' } });

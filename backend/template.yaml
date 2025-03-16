@@ -8,64 +8,98 @@ Parameters:
     AllowedValues:
       - dev
       - prod
+      - local
 
 Globals:
   Function:
     Runtime: nodejs18.x
     Timeout: 30
-    MemorySize: 256
+    MemorySize: 128
     Environment:
       Variables:
-        STAGE: !Ref Stage
-        TRANSACTIONS_TABLE: !Ref TransactionsTable
         TAGS_TABLE: !Ref TagsTable
+        TRANSACTIONS_TABLE: !Ref TransactionsTable
+        STAGE: !Ref Stage
+        IS_OFFLINE: !If [IsLocal, "true", "false"]
+        AWS_REGION: !If [IsLocal, "localhost", !Ref "AWS::Region"]
+        DYNAMODB_ENDPOINT: !If [IsLocal, "http://localhost:8000", !Ref "AWS::NoValue"]
+
+Conditions:
+  IsLocal: !Equals [!Ref Stage, "local"]
 
 Resources:
-  # Cognito User Pool
-  UserPool:
+  # API Gateway
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Stage
+      Auth: !If
+        - IsLocal
+        - {}
+        - DefaultAuthorizer: CognitoAuthorizer
+          Authorizers:
+            CognitoAuthorizer:
+              UserPoolArn: !GetAtt CognitoUserPool.Arn
+
+  # Cognito
+  CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: !Sub shfm-user-pool-${Stage}
-      AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: false
-      AutoVerifiedAttributes:
-        - email
+      UserPoolName: !Sub ${AWS::StackName}-user-pool
       UsernameAttributes:
         - email
-      Schema:
-        - Name: email
-          AttributeDataType: String
-          Mutable: true
-          Required: true
-      
-  # Cognito User Pool Client
-  UserPoolClient:
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+
+  CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      UserPoolId: !Ref UserPool
-      ClientName: !Sub shfm-client-${Stage}
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Sub ${AWS::StackName}-client
       GenerateSecret: false
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
-      CallbackURLs:
-        - http://localhost:5173
-      LogoutURLs:
-        - http://localhost:5173
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - email
-        - openid
-        - profile
-      SupportedIdentityProviders:
-        - COGNITO
+      PreventUserExistenceErrors: ENABLED
 
   # DynamoDB Tables
+  TagsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AWS::StackName}-tags
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: byUserId
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
   TransactionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub shfm-transactions-${Stage}
+      TableName: !Sub ${AWS::StackName}-transactions
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
@@ -85,76 +119,20 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-      BillingMode: PAY_PER_REQUEST
-
-  TagsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub shfm-tags-${Stage}
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-        - AttributeName: userId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: byUser
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      BillingMode: PAY_PER_REQUEST
-
-  # API Gateway
-  Api:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: !Ref Stage
-      Cors:
-        AllowMethods: "'*'"
-        AllowHeaders: "'*'"
-        AllowOrigin: "'*'"
-      Auth:
-        DefaultAuthorizer: CognitoAuthorizer
-        Authorizers:
-          CognitoAuthorizer:
-            UserPoolArn: !GetAtt UserPool.Arn
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
 
   # Lambda Functions
-  CreateTransactionFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/functions/transactions
-      Handler: create.handler
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /transactions
-            Method: POST
-            RestApiId: !Ref Api
-
-  ListTransactionsFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/functions/transactions
-      Handler: list.handler
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /transactions
-            Method: GET
-            RestApiId: !Ref Api
-
+  # Tags
   CreateTagFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/tags
-      Handler: create.handler
+      CodeUri: dist/
+      Handler: functions/tags/create.handler
       Events:
         Api:
           Type: Api
@@ -166,8 +144,8 @@ Resources:
   ListTagsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/tags
-      Handler: list.handler
+      CodeUri: dist/
+      Handler: functions/tags/list.handler
       Events:
         Api:
           Type: Api
@@ -176,15 +154,92 @@ Resources:
             Method: GET
             RestApiId: !Ref Api
 
+  UpdateTagFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: functions/tags/update.handler
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /tags/{id}
+            Method: PUT
+            RestApiId: !Ref Api
+
+  DeleteTagFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: functions/tags/delete.handler
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /tags/{id}
+            Method: DELETE
+            RestApiId: !Ref Api
+
+  # Transactions
+  CreateTransactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: functions/transactions/create.handler
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /transactions
+            Method: POST
+            RestApiId: !Ref Api
+
+  ListTransactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: functions/transactions/list.handler
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /transactions
+            Method: GET
+            RestApiId: !Ref Api
+
+  UpdateTransactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: functions/transactions/update.handler
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /transactions/{id}
+            Method: PUT
+            RestApiId: !Ref Api
+
+  DeleteTransactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: functions/transactions/delete.handler
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /transactions/{id}
+            Method: DELETE
+            RestApiId: !Ref Api
+
 Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Stage}
-  
   UserPoolId:
     Description: Cognito User Pool ID
-    Value: !Ref UserPool
-  
+    Value: !Ref CognitoUserPool
   UserPoolClientId:
     Description: Cognito User Pool Client ID
-    Value: !Ref UserPoolClient 
+    Value: !Ref CognitoUserPoolClient 

@@ -24,7 +24,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   const formatAmount = (type: string, amount: number) => {
-    const prefix = type === 'expense' ? '-' : '+';
+    const prefix = type === 'EXPENSE' ? '-' : '+';
     return `${prefix}${amount.toLocaleString()}円`;
   };
 
@@ -64,7 +64,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             </div>
             <span
               className={`font-medium ${
-                transaction.type === 'expense' ? 'text-red-600' : 'text-green-600'
+                transaction.type === 'EXPENSE' ? 'text-red-600' : 'text-green-600'
               }`}
             >
               {formatAmount(transaction.type, transaction.amount)}

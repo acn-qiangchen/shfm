@@ -1,21 +1,62 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { APIGatewayProxyHandler } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
-import { dynamodb, TABLES } from '../../lib/db';
 import { CreateTransactionSchema, Transaction } from '../../types/transaction';
+import * as dynamodb from '../../lib/dynamodb';
+import { ZodError } from 'zod';
+import { getUserId } from '../../lib/auth';
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const handler: APIGatewayProxyHandler = async (event) => {
+  // CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Credentials': true,
+  };
+
   try {
-    const userId = event.requestContext.authorizer?.claims.sub;
+    // Check authentication
+    const userId = getUserId(event);
     if (!userId) {
       return {
         statusCode: 401,
-        body: JSON.stringify({ message: 'Unauthorized' })
+        headers,
+        body: JSON.stringify({ message: 'Unauthorized' }),
       };
     }
 
-    const body = JSON.parse(event.body || '{}');
-    const validatedData = CreateTransactionSchema.parse(body);
+    // Parse and validate request body
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ message: 'Invalid request body' }),
+      };
+    }
+
+    const data = JSON.parse(event.body);
+    const validatedData = CreateTransactionSchema.parse(data);
+
+    // Validate that all tag IDs exist
+    if (validatedData.tagIds && validatedData.tagIds.length > 0) {
+      const tagPromises = validatedData.tagIds.map(tagId =>
+        dynamodb.get({
+          TableName: dynamodb.TABLES.TAGS,
+          Key: { id: tagId },
+        })
+      );
+      const tagResults = await Promise.all(tagPromises);
+      const nonExistentTags = validatedData.tagIds.filter((_, index) => !tagResults[index].Item);
+      
+      if (nonExistentTags.length > 0) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            message: 'One or more tags do not exist',
+            nonExistentTags,
+          }),
+        };
+      }
+    }
 
     const now = new Date().toISOString();
     const transaction: Transaction = {
@@ -26,24 +67,34 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedAt: now,
     };
 
-    await dynamodb.send(new PutCommand({
-      TableName: TABLES.TRANSACTIONS,
+    await dynamodb.put({
+      TableName: dynamodb.TABLES.TRANSACTIONS,
       Item: transaction,
-    }));
+    });
 
     return {
       statusCode: 201,
-      body: JSON.stringify(transaction)
+      headers,
+      body: JSON.stringify(transaction),
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error creating transaction:', error);
-    
+
+    if (error instanceof ZodError) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          message: 'Validation error',
+          errors: error.errors,
+        }),
+      };
+    }
+
     return {
-      statusCode: error.name === 'ZodError' ? 400 : 500,
-      body: JSON.stringify({
-        message: error.name === 'ZodError' ? 'Invalid input' : 'Internal server error',
-        errors: error.name === 'ZodError' ? error.errors : undefined
-      })
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ message: 'Internal server error' }),
     };
   }
 }; 

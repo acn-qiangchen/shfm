@@ -18,7 +18,18 @@ Amplify.configure({
       {
         name: 'api',
         endpoint: import.meta.env.VITE_APP_API_URL,
-        region: import.meta.env.VITE_APP_REGION
+        region: import.meta.env.VITE_APP_REGION,
+        custom_header: async () => {
+          try {
+            const session = await Amplify.Auth.currentSession();
+            return {
+              Authorization: `Bearer ${session.getIdToken().getJwtToken()}`
+            };
+          } catch (error) {
+            console.error('Error getting session:', error);
+            return {};
+          }
+        }
       }
     ]
   }

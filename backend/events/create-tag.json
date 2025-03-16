@@ -1,0 +1,10 @@
+{
+  "body": "{\"name\":\"食費\",\"color\":\"#FF0000\"}",
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "test-user-id"
+      }
+    }
+  }
+} 
