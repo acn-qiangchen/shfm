@@ -40,6 +40,12 @@ Resources:
           Authorizers:
             CognitoAuthorizer:
               UserPoolArn: !GetAtt CognitoUserPool.Arn
+      Cors:
+        AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Access-Control-Allow-Origin,Access-Control-Request-Method,Access-Control-Request-Headers'"
+        AllowOrigin: "'http://localhost:3001'"
+        AllowCredentials: true
+        MaxAge: "'600'"
 
   # Cognito
   CognitoUserPool:
@@ -231,6 +237,20 @@ Resources:
           Properties:
             Path: /transactions/{id}
             Method: DELETE
+            RestApiId: !Ref Api
+
+  # Auth Functions
+  LocalLoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: functions/auth/login.handler
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/login
+            Method: POST
             RestApiId: !Ref Api
 
 Outputs:
