@@ -2,7 +2,7 @@ import React from 'react';
 
 interface NumpadProps {
   onInput: (value: string) => void;
-  onClear: () => void;
+  onClear?: () => void;
 }
 
 export const Numpad: React.FC<NumpadProps> = ({ onInput, onClear }) => {
@@ -12,6 +12,14 @@ export const Numpad: React.FC<NumpadProps> = ({ onInput, onClear }) => {
     '1', '2', '3',
     '0',
   ];
+
+  const handleClear = () => {
+    if (onClear) {
+      onClear();
+    } else {
+      onInput('clear');
+    }
+  };
 
   return (
     <div className="grid grid-cols-3 gap-2" data-testid="numpad">
@@ -30,7 +38,7 @@ export const Numpad: React.FC<NumpadProps> = ({ onInput, onClear }) => {
         </button>
       ))}
       <button
-        onClick={onClear}
+        onClick={handleClear}
         className="p-4 text-xl font-medium rounded-lg bg-red-100 hover:bg-red-200 active:bg-red-300 transition-colors text-red-600"
       >
         クリア

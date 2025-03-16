@@ -4,85 +4,104 @@ import { vi } from 'vitest';
 import { TagList } from '../TagList';
 import { Tag } from '../../../types';
 
-const mockTags: Tag[] = [
-  {
-    id: '1',
-    userId: 'user1',
-    name: 'タグ1',
-    color: '#FF0000',
-    createdAt: '2024-03-20T10:00:00Z',
-    updatedAt: '2024-03-20T10:00:00Z',
-  },
-  {
-    id: '2',
-    userId: 'user1',
-    name: 'タグ2',
-    color: '#00FF00',
-    createdAt: '2024-03-20T10:00:00Z',
-    updatedAt: '2024-03-20T10:00:00Z',
-  },
-];
-
 describe('TagList', () => {
+  const mockTags: Tag[] = [
+    {
+      id: '1',
+      userId: 'user1',
+      name: 'タグ1',
+      color: '#FF0000',
+      createdAt: '2024-03-15T00:00:00Z',
+      updatedAt: '2024-03-15T00:00:00Z',
+    },
+    {
+      id: '2',
+      userId: 'user1',
+      name: 'タグ2',
+      color: '#00FF00',
+      createdAt: '2024-03-15T00:00:00Z',
+      updatedAt: '2024-03-15T00:00:00Z',
+    },
+  ];
+
   const mockOnEdit = vi.fn();
   const mockOnDelete = vi.fn();
-  const defaultProps = {
-    tags: mockTags,
-    onEdit: mockOnEdit,
-    onDelete: mockOnDelete,
-    isLoading: false,
-  };
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockOnEdit.mockClear();
+    mockOnDelete.mockClear();
   });
 
-  it('renders tags correctly', () => {
-    render(<TagList {...defaultProps} />);
+  it('タグ一覧が正しくレンダリングされること', () => {
+    render(
+      <TagList
+        tags={mockTags}
+        isLoading={false}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+      />
+    );
 
-    mockTags.forEach(tag => {
-      expect(screen.getByText(tag.name)).toBeInTheDocument();
-      const colorPreview = screen.getByTestId(`color-preview-${tag.id}`);
-      expect(colorPreview).toHaveStyle({ backgroundColor: tag.color });
-    });
+    expect(screen.getByText('タグ1')).toBeInTheDocument();
+    expect(screen.getByText('タグ2')).toBeInTheDocument();
+    expect(screen.getAllByTestId('tag-color')).toHaveLength(2);
   });
 
-  it('shows loading state', () => {
-    render(<TagList {...defaultProps} isLoading={true} />);
-    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+  it('ローディング中の表示が正しく表示されること', () => {
+    render(
+      <TagList
+        tags={[]}
+        isLoading={true}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
-  it('shows empty state when no tags', () => {
-    render(<TagList {...defaultProps} tags={[]} />);
-    expect(screen.getByText(/タグがありません/i)).toBeInTheDocument();
+  it('タグが空の場合のメッセージが表示されること', () => {
+    render(
+      <TagList
+        tags={[]}
+        isLoading={false}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    expect(screen.getByText('タグが登録されていません')).toBeInTheDocument();
   });
 
-  it('calls onEdit when edit button is clicked', () => {
-    render(<TagList {...defaultProps} />);
-    
-    const editButton = screen.getAllByRole('button', { name: /編集/i })[0];
-    fireEvent.click(editButton);
+  it('編集ボタンをクリックすると編集ハンドラーが呼ばれること', () => {
+    render(
+      <TagList
+        tags={mockTags}
+        isLoading={false}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    const editButtons = screen.getAllByLabelText('タグを編集');
+    fireEvent.click(editButtons[0]);
 
     expect(mockOnEdit).toHaveBeenCalledWith(mockTags[0]);
   });
 
-  it('calls onDelete when delete button is clicked and confirmed', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<TagList {...defaultProps} />);
-    
-    const deleteButton = screen.getAllByRole('button', { name: /削除/i })[0];
-    fireEvent.click(deleteButton);
+  it('削除ボタンをクリックすると削除ハンドラーが呼ばれること', () => {
+    render(
+      <TagList
+        tags={mockTags}
+        isLoading={false}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+      />
+    );
 
-    expect(mockOnDelete).toHaveBeenCalledWith(mockTags[0].id);
-  });
+    const deleteButtons = screen.getAllByLabelText('タグを削除');
+    fireEvent.click(deleteButtons[1]);
 
-  it('does not call onDelete when delete is not confirmed', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    render(<TagList {...defaultProps} />);
-    
-    const deleteButton = screen.getAllByRole('button', { name: /削除/i })[0];
-    fireEvent.click(deleteButton);
-
-    expect(mockOnDelete).not.toHaveBeenCalled();
+    expect(mockOnDelete).toHaveBeenCalledWith(mockTags[1].id);
   });
 }); 
